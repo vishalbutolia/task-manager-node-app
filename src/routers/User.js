@@ -1,7 +1,6 @@
 const express = require('express');
 const User = require('../models/user');
 require('../db/mongoose');
-const { hashPassword } = require('../utils/hashpassword');
 const auth = require('../middleware/auth');
 
 const router = express.Router(); 
@@ -9,7 +8,6 @@ const router = express.Router();
 router.post('/', async (req, res) => {
   try{
     const user = new User(req.body);
-    user.password = await hashPassword(user.password);
     await user.save(user);
     const token = await user.generateAuthToken();
     res.status(201).send({user, token});
@@ -53,40 +51,26 @@ router.get('/me', auth, async (req, res) => {
   res.status(200).send(req.user);
 });
 
-router.get('/:id', async (req, res) => {
+router.patch("/me", auth, async (req, res) => {
+  const allowedUpdates = ['name', 'email', 'password', 'age'];
   try {
-    const { id: _id } = req.params;
-    const user = await User.findById(_id);
-    if(!user){
-      res.status(404).send();
+    const updates = Object.keys(req.body);
+    const isValidOperation = updates.every((update) => allowedUpdates.includes(update));
+    if(!isValidOperation){
+      return res.status(400).send({error: 'Invalid updates'})
     }
-    res.status(200).send(user);  
+    updates.forEach((update) => req.user[update] = req.body[update]);
+    await req.user.save();
+    res.send(req.user);
   }catch(e){
     res.status(500).send(e);
   }
 });
 
-router.patch("/:id", async (req, res) => {
+router.delete("/me", auth, async (req, res) => {
   try {
-    const {id: _id} = req.params;
-    const user = await User.findByIdAndUpdate(_id, req.body, { new: true, runValidators: true});
-    if(!user){
-      res.status(404).send();
-    }
-    res.send(user);
-  }catch(e){
-    res.status(500).send(e);
-  }
-});
-
-router.delete("/:id", async (req, res) => {
-  try {
-    const { id:_id } = req.params;
-    const user = await User.findByIdAndDelete(_id);
-    if(!user){
-      res.status(404).send();
-    }
-    res.send(user);
+    await req.user.remove();
+    res.send(req.user);
   }catch(e){
     res.status(500).send(e);
   }
